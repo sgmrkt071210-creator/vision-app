@@ -1,6 +1,6 @@
 import express from 'express';
 import sqlite3 from 'sqlite3';
-import pg from 'pg';
+import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import bodyParser from 'body-parser';
@@ -15,10 +15,6 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('[YOUR-PASSWORD]')) {
-    console.error("🚨 CRITICAL ERROR: Database password is still set to placeholder '[YOUR-PASSWORD]'. Please update the DATABASE_URL environment variable in Render.");
-}
-
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(join(__dirname, 'dist')));
@@ -27,61 +23,42 @@ app.use(express.static(join(__dirname, 'dist')));
 let db;
 
 const initDb = async () => {
-    if (process.env.DATABASE_URL) {
-        // PostgreSQL (Cloud)
-        console.log('Connecting to PostgreSQL...');
-        const { Pool } = pg;
-        const pool = new Pool({
-            connectionString: process.env.DATABASE_URL,
-            ssl: { rejectUnauthorized: false },
-            connectionTimeoutMillis: 10000
-        });
+    // Check for Supabase Vars (Cloud)
+    // We strictly use Supabase if variables are present, otherwise fallback to local SQLite
+    if (process.env.SUPABASE_URL && process.env.SUPABASE_KEY) {
+        console.log('Connecting to Supabase (HTTP)...');
+        try {
+            const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-        // Wrapper to mimic SQLite API for standardized usage
-        db = {
-            query: async (text, params) => pool.query(text, params),
-            type: 'postgres'
-        };
-
-        // Initialize Table
-        await db.query(`CREATE TABLE IF NOT EXISTS goals (
-            id TEXT PRIMARY KEY,
-            text TEXT,
-            category TEXT,
-            completed BOOLEAN,
-            created_at TEXT, 
-            data JSONB
-        )`);
-        console.log('PostgreSQL connected and initialized.');
+            db = {
+                type: 'supabase',
+                client: supabase
+            };
+            console.log('Supabase client initialized via HTTP.');
+        } catch (err) {
+            console.error('Failed to initialize Supabase client:', err);
+        }
     } else {
-        // SQLite (Local)
-        console.log('Connecting to SQLite...');
+        // SQLite (Local Fallback)
+        console.log('Connecting to SQLite (Local)...');
         const sqliteDb = new sqlite3.Database('./vision-app.db', (err) => {
             if (err) console.error('Database connection error:', err);
         });
 
-        db = {
-            query: (text, params) => {
-                return new Promise((resolve, reject) => {
-                    // Primitive conversion from Postgres syntax ($1, $2) to SQLite (?)
-                    // NOTE: This is a simplified adapter. Complex queries would need a builder.
-                    // For current usage, we only use INSERT and SELECT.
-                    // However, conversion is tricky. Easier to separate logic in handlers.
-                    reject(new Error("Use type-specific methods"));
-                });
-            },
-            sqlite: sqliteDb,
-            type: 'sqlite'
-        };
-
         sqliteDb.run(`CREATE TABLE IF NOT EXISTS goals (
             id TEXT PRIMARY KEY,
+            username TEXT,
             text TEXT,
             category TEXT,
             completed BOOLEAN,
             created_at TEXT,
             data JSON
         )`);
+
+        db = {
+            type: 'sqlite',
+            client: sqliteDb
+        };
         console.log('SQLite connected.');
     }
 };
@@ -110,20 +87,36 @@ app.post('/api/analyze', async (req, res) => {
 
 // Goals API
 app.get('/api/goals', async (req, res) => {
+    const { username } = req.query;
+    if (!username) return res.json([]); // Return empty if no user specified
+
     try {
-        if (db.type === 'postgres') {
-            const result = await db.query("SELECT * FROM goals ORDER BY created_at DESC");
-            const goals = result.rows.map(row => ({
+        if (!db) throw new Error("Database not initialized");
+
+        if (db.type === 'supabase') {
+            const { data, error } = await db.client
+                .from('goals')
+                .select('*')
+                .eq('username', username)
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error('Supabase Select Error:', error);
+                throw error;
+            }
+
+            // Map snake_case to CamelCase standard
+            const goals = data.map(row => ({
                 id: row.id,
                 text: row.text,
                 category: row.category,
                 completed: row.completed,
                 createdAt: row.created_at,
-                ...row.data
+                ...(row.data || {})
             }));
             res.json(goals);
         } else {
-            db.sqlite.all("SELECT * FROM goals ORDER BY created_at DESC", [], (err, rows) => {
+            db.client.all("SELECT * FROM goals WHERE username = ? ORDER BY created_at DESC", [username], (err, rows) => {
                 if (err) return res.status(500).json({ error: err.message });
                 const goals = rows.map(row => ({
                     id: row.id,
@@ -137,37 +130,66 @@ app.get('/api/goals', async (req, res) => {
             });
         }
     } catch (e) {
+        console.error(e);
         res.status(500).json({ error: e.message });
     }
 });
 
 app.post('/api/goals', async (req, res) => {
-    const goals = req.body;
-    const goalList = Array.isArray(goals) ? goals : [goals];
+    // Expect body: { username: "...", goals: [...] }
+    const { username, goals } = req.body;
+
+    if (!username) {
+        return res.status(400).json({ error: "Username is required" });
+    }
+
+    const goalList = Array.isArray(goals) ? goals : [];
 
     try {
-        if (db.type === 'postgres') {
-            // PostgreSQL Transaction
-            await db.query('BEGIN');
-            await db.query('DELETE FROM goals');
+        if (!db) throw new Error("Database not initialized");
 
-            for (const g of goalList) {
-                const { id, text, category, completed, createdAt, ...rest } = g;
-                await db.query(
-                    'INSERT INTO goals (id, text, category, completed, created_at, data) VALUES ($1, $2, $3, $4, $5, $6)',
-                    [String(id), text, category, completed, createdAt, rest] // pg handles JSON automatically
-                );
+        if (db.type === 'supabase') {
+            // "Sync" strategy: Delete all for THIS USER and insert
+
+            // 1. Delete rows for this user
+            const { error: delError } = await db.client.from('goals').delete().eq('username', username);
+
+            if (delError) {
+                console.error('Supabase Delete Error:', delError);
+                throw delError;
             }
-            await db.query('COMMIT');
+
+            // 2. Prepare data for insert (snake_case)
+            const rowsToInsert = goalList.map(g => {
+                const { id, text, category, completed, createdAt, ...rest } = g;
+                return {
+                    id: String(id),
+                    username: username,
+                    text,
+                    category,
+                    completed,
+                    created_at: createdAt,
+                    data: rest
+                };
+            });
+
+            // 3. Bulk Insert
+            if (rowsToInsert.length > 0) {
+                const { error: insError } = await db.client.from('goals').insert(rowsToInsert);
+                if (insError) {
+                    console.error('Supabase Insert Error:', insError);
+                    throw insError;
+                }
+            }
         } else {
             // SQLite Transaction
-            db.sqlite.serialize(() => {
-                db.sqlite.run("DELETE FROM goals");
-                const stmt = db.sqlite.prepare("INSERT INTO goals (id, text, category, completed, created_at, data) VALUES (?, ?, ?, ?, ?, ?)");
+            db.client.serialize(() => {
+                db.client.run("DELETE FROM goals WHERE username = ?", [username]); // Only delete this user's goals
+                const stmt = db.client.prepare("INSERT INTO goals (id, username, text, category, completed, created_at, data) VALUES (?, ?, ?, ?, ?, ?, ?)");
 
                 goalList.forEach(g => {
                     const { id, text, category, completed, createdAt, ...rest } = g;
-                    stmt.run(String(id), text, category, completed, createdAt, JSON.stringify(rest));
+                    stmt.run(String(id), username, text, category, completed, createdAt, JSON.stringify(rest));
                 });
 
                 stmt.finalize();
@@ -175,7 +197,6 @@ app.post('/api/goals', async (req, res) => {
         }
         res.json({ status: 'success' });
     } catch (e) {
-        if (db.type === 'postgres') await db.query('ROLLBACK');
         console.error(e);
         res.status(500).json({ error: e.message });
     }
