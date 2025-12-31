@@ -15,6 +15,10 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('[YOUR-PASSWORD]')) {
+    console.error("🚨 CRITICAL ERROR: Database password is still set to placeholder '[YOUR-PASSWORD]'. Please update the DATABASE_URL environment variable in Render.");
+}
+
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(join(__dirname, 'dist')));
