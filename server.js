@@ -29,7 +29,8 @@ const initDb = async () => {
         const { Pool } = pg;
         const pool = new Pool({
             connectionString: process.env.DATABASE_URL,
-            ssl: { rejectUnauthorized: false } // Required for most cloud DBs
+            ssl: { rejectUnauthorized: false },
+            connectionTimeoutMillis: 10000
         });
 
         // Wrapper to mimic SQLite API for standardized usage
