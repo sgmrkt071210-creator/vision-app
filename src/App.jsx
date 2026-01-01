@@ -117,7 +117,7 @@ const App = () => {
             deadlineMonth: 数値
             isExam: true/false
             roadmap: [{"month":1,"task":"..."}...] (必ず1-12月)
-            subTasks: ["TODO1","TODO2","TODO3"]
+            subTasks: ["具体的な行動1","具体的な行動2","具体的な行動3", ...] (目標を達成するための具体的なTODOリスト)
             advice: "一言アドバイス"
             rewardIdea: "ご褒美アイデア"
           ` }]
