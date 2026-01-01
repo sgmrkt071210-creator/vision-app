@@ -135,7 +135,15 @@ const App = () => {
         })
       });
       const result = await response.json();
-      const content = JSON.parse(result.candidates?.[0]?.content?.parts?.[0]?.text);
+
+      // Robust Parsing
+      let rawText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!rawText) throw new Error("No text content");
+
+      // Strip markdown code blocks if present
+      rawText = rawText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+
+      const content = JSON.parse(rawText);
       if (content.subTasks?.length > 3) content.subTasks = content.subTasks.slice(0, 3);
       return content;
     } catch (error) {
@@ -190,10 +198,18 @@ const App = () => {
         })
       });
       const data = await res.json();
-      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "すみません、うまく答えられませんでした。";
+
+      let reply = "すみません、うまく答えられませんでした。";
+      if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
+        reply = data.candidates[0].content.parts[0].text;
+      } else if (data.error) {
+        reply = "システムエラーが発生しました。";
+        console.error("Chat Error:", data.error);
+      }
+
       setChatMessages(prev => [...prev, { role: 'model', text: reply }]);
     } catch (e) {
-      setChatMessages(prev => [...prev, { role: 'model', text: "エラーが発生しました。" }]);
+      setChatMessages(prev => [...prev, { role: 'model', text: "接続エラーが発生しました。" }]);
     } finally {
       setIsChatLoading(false);
     }

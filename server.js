@@ -153,19 +153,26 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// Gemini API Proxy (Analysis) - Using stable model
+// Gemini API Proxy (Analysis) - Revert to 2.5-flash-preview
 app.post('/api/analyze', async (req, res) => {
     try {
         const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey) throw new Error("API Key not configured");
 
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+        // Using 2.5-flash-preview as it was confirmed working previously
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(req.body)
         });
 
         const data = await response.json();
+
+        if (data.error) {
+            console.error('Gemini Analyze API Error:', JSON.stringify(data.error));
+            return res.status(500).json({ error: data.error.message });
+        }
+
         res.json(data);
     } catch (error) {
         console.error('API Error:', error);
@@ -173,7 +180,7 @@ app.post('/api/analyze', async (req, res) => {
     }
 });
 
-// Gemini API Proxy (Chat) - Using stable model and systemInstruction
+// Gemini API Proxy (Chat) - Using 2.5-flash-preview
 app.post('/api/chat', async (req, res) => {
     const { message, context, goal } = req.body;
 
@@ -188,13 +195,13 @@ app.post('/api/chat', async (req, res) => {
             返答は短く簡潔なテキストで返してください。
         `;
 
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 systemInstruction: { parts: [{ text: systemPrompt }] },
                 contents: [
-                    ...(context || []), // Previous chat history
+                    ...(context || []),
                     { role: "user", parts: [{ text: message }] }
                 ]
             })
@@ -203,18 +210,17 @@ app.post('/api/chat', async (req, res) => {
         const data = await response.json();
 
         if (data.error) {
-            console.error('Gemini API Error details:', JSON.stringify(data.error, null, 2));
+            console.error('Gemini Chat API Error:', JSON.stringify(data.error));
             throw new Error(data.error.message);
         }
 
         const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
         if (!reply) {
-            console.error('No content in response:', JSON.stringify(data, null, 2));
+            console.error('No content in Gemini response:', JSON.stringify(data));
             throw new Error('No response from AI');
         }
 
-        // Return the clean reply
         res.json({ candidates: [{ content: { parts: [{ text: reply }] } }] });
 
     } catch (error) {
