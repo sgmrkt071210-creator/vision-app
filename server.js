@@ -153,13 +153,12 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// Gemini API Proxy (Analysis) - Revert to 2.5-flash-preview
+// Gemini API Proxy (Analysis) - Using 2.5-flash-preview
 app.post('/api/analyze', async (req, res) => {
     try {
         const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey) throw new Error("API Key not configured");
 
-        // Using 2.5-flash-preview as it was confirmed working previously
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -180,7 +179,7 @@ app.post('/api/analyze', async (req, res) => {
     }
 });
 
-// Gemini API Proxy (Chat) - Using 2.5-flash-preview
+// Gemini API Proxy (Chat) - Universal Fix
 app.post('/api/chat', async (req, res) => {
     const { message, context, goal } = req.body;
 
@@ -195,15 +194,22 @@ app.post('/api/chat', async (req, res) => {
             返答は短く簡潔なテキストで返してください。
         `;
 
+        // Combine system prompt with the first user message for maximum compatibility
+        // This avoids 'systemInstruction' version issues
+        const updatedContext = [...(context || [])];
+        if (updatedContext.length === 0) {
+            // First message of the conversation
+            updatedContext.push({ role: "user", parts: [{ text: `【システム設定】\n${systemPrompt}\n\n【ユーザーの最初のメッセージ】\n${message}` }] });
+        } else {
+            // Subsequent messages
+            updatedContext.push({ role: "user", parts: [{ text: message }] });
+        }
+
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                systemInstruction: { parts: [{ text: systemPrompt }] },
-                contents: [
-                    ...(context || []),
-                    { role: "user", parts: [{ text: message }] }
-                ]
+                contents: updatedContext
             })
         });
 
