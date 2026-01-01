@@ -153,13 +153,13 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// Gemini API Proxy (Analysis)
+// Gemini API Proxy (Analysis) - Using stable model
 app.post('/api/analyze', async (req, res) => {
     try {
         const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey) throw new Error("API Key not configured");
 
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(req.body)
@@ -173,7 +173,7 @@ app.post('/api/analyze', async (req, res) => {
     }
 });
 
-// Gemini API Proxy (Chat)
+// Gemini API Proxy (Chat) - Using stable model and systemInstruction
 app.post('/api/chat', async (req, res) => {
     const { message, context, goal } = req.body;
 
@@ -188,20 +188,35 @@ app.post('/api/chat', async (req, res) => {
             返答は短く簡潔なテキストで返してください。
         `;
 
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+                systemInstruction: { parts: [{ text: systemPrompt }] },
                 contents: [
-                    { role: "user", parts: [{ text: `システム設定: ${systemPrompt}` }] },
-                    ...(context || []), // Previous chat history if any
+                    ...(context || []), // Previous chat history
                     { role: "user", parts: [{ text: message }] }
                 ]
             })
         });
 
         const data = await response.json();
-        res.json(data);
+
+        if (data.error) {
+            console.error('Gemini API Error details:', JSON.stringify(data.error, null, 2));
+            throw new Error(data.error.message);
+        }
+
+        const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (!reply) {
+            console.error('No content in response:', JSON.stringify(data, null, 2));
+            throw new Error('No response from AI');
+        }
+
+        // Return the clean reply
+        res.json({ candidates: [{ content: { parts: [{ text: reply }] } }] });
+
     } catch (error) {
         console.error('Chat API Error:', error);
         res.status(500).json({ error: 'Chat failed' });
