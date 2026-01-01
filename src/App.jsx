@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, CheckCircle2, Circle, Trash2, Tag, Trophy, Repeat, Heart, Loader2, ListTodo, Search, ChevronDown, CalendarDays, Sparkles, AlertCircle, TrendingUp, RefreshCcw, Check, MessageSquare, Send, X } from 'lucide-react';
+import { Plus, CheckCircle2, Circle, Trash2, Tag, Trophy, Repeat, Heart, Loader2, ListTodo, Search, ChevronDown, CalendarDays, Sparkles, AlertCircle, TrendingUp, RefreshCcw, Check, X } from 'lucide-react';
+// Did NOT import MessageSquare, Send to remove chat UI
 
 // カテゴリー定義
 const CATEGORIES = {
@@ -25,12 +26,7 @@ const App = () => {
   const [authInput, setAuthInput] = useState({ username: '', password: '' });
   const [authError, setAuthError] = useState('');
 
-  // Chat State
-  const [chatGoal, setChatGoal] = useState(null);
-  const [chatMessages, setChatMessages] = useState([]);
-  const [chatInput, setChatInput] = useState('');
-  const [isChatLoading, setIsChatLoading] = useState(false);
-  const chatEndRef = useRef(null);
+  // REMOVED: Chat State
 
   const today = new Date();
   const currentMonth = today.getMonth() + 1;
@@ -57,11 +53,6 @@ const App = () => {
     }, 1000);
     return () => clearTimeout(timer);
   }, [goals, currentUser]);
-
-  // Scroll to bottom of chat
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages, chatGoal]);
 
   // --- Auth Handlers ---
   const handleAuth = async (e) => {
@@ -142,8 +133,7 @@ const App = () => {
       rawText = rawText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
 
       const content = JSON.parse(rawText);
-      // REMOVED: Truncation of subTasks
-      // if (content.subTasks?.length > 3) content.subTasks = content.subTasks.slice(0, 3);
+      // No truncation needed
       return content;
     } catch (error) {
       console.error(error);
@@ -166,9 +156,7 @@ const App = () => {
 
   const toggleGoal = (id) => setGoals(goals.map(g => g.id === id ? { ...g, completed: !g.completed } : g));
   const deleteGoal = (id) => setGoals(goals.filter(g => g.id !== id));
-  const changeCategory = (goalId, newCategory) => setGoals(goals.map(g => g.id === goalId ? { ...g, category: newCategory } : g));
 
-  // Updated subTask toggling logic
   const toggleSubTask = (goalId, text) => setGoals(goals.map(g => {
     if (g.id !== goalId) return g;
     const done = g.doneSubTasks || [];
@@ -178,52 +166,13 @@ const App = () => {
 
   const toggleHabit = (id) => setGoals(goals.map(g => {
     if (g.id !== id) return g;
-    const h = { ...g.history }; h[todayStr] = !h[todayStr]; return { ...g, history: h };
+    const h = { ...g.history };
+    if (h[todayStr]) delete h[todayStr];
+    else h[todayStr] = true;
+    return { ...g, history: h };
   }));
 
-  // --- Chat Handlers ---
-  const openChat = (goal) => {
-    setChatGoal(goal);
-    // Initial message
-    if (chatMessages.length === 0 || chatMessages[0].role !== 'model') {
-      setChatMessages([{ role: 'model', text: `「${goal.text}」について何でも相談してください！` }]);
-    }
-  };
-
-  const sendChatMessage = async () => {
-    if (!chatInput.trim() || isChatLoading) return;
-    const msg = chatInput;
-    setChatInput('');
-    setChatMessages(prev => [...prev, { role: 'user', text: msg }]);
-    setIsChatLoading(true);
-
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: msg,
-          context: chatMessages.filter(m => m.text).map(m => ({ role: m.role, parts: [{ text: m.text }] })),
-          goal: chatGoal
-        })
-      });
-      const data = await res.json();
-
-      let reply = "すみません、うまく答えられませんでした。";
-      if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
-        reply = data.candidates[0].content.parts[0].text;
-      } else if (data.error) {
-        reply = "システムエラーが発生しました。";
-        console.error("Chat Error:", data.error);
-      }
-
-      setChatMessages(prev => [...prev, { role: 'model', text: reply }]);
-    } catch (e) {
-      setChatMessages(prev => [...prev, { role: 'model', text: "接続エラーが発生しました。" }]);
-    } finally {
-      setIsChatLoading(false);
-    }
-  };
+  // REMOVED: Chat Handlers
 
   const filteredGoals = useMemo(() => goals.filter(g => (filter === 'ALL' || g.category === filter) && g.text.toLowerCase().includes(searchTerm.toLowerCase())), [goals, filter, searchTerm]);
   const stats = {
@@ -234,13 +183,46 @@ const App = () => {
     hobby: goals.filter(g => g.category === 'HOBBY').length,
   };
 
+  // --- Daily View Logic ---
+  const dailyTasks = useMemo(() => {
+    const items = [];
+
+    // 1. Uncompleted Habits for today
+    goals.filter(g => g.category === 'HABIT').forEach(g => {
+      const isDoneToday = g.history && g.history[todayStr];
+      items.push({
+        type: 'HABIT',
+        goalId: g.id,
+        text: g.text,
+        isDone: !!isDoneToday
+      });
+    });
+
+    // 2. Uncompleted Subtasks
+    goals.forEach(g => {
+      if (g.subTasks && g.subTasks.length > 0) {
+        const done = g.doneSubTasks || [];
+        g.subTasks.forEach(t => {
+          items.push({
+            type: 'SUBTASK',
+            goalId: g.id,
+            text: t,
+            parentText: g.text,
+            isDone: done.includes(t)
+          });
+        });
+      }
+    });
+    return items;
+  }, [goals, todayStr]);
+
+
   // --- Auth UI ---
-  // (Auth UI omitted for brevity, same as before)
+  // (Simplified for brevity, same structure)
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-stone-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-[2.5rem] shadow-xl p-10 w-full max-w-md border border-emerald-100">
-          {/* ...Same Auth UI... */}
           <div className="text-center mb-8">
             <h1 className="text-3xl font-black text-emerald-900 tracking-tight">Vision App</h1>
             <p className="text-slate-500 mt-2 font-medium">ログインしてスタート</p>
@@ -326,17 +308,17 @@ const App = () => {
                           </div>
                         </div>
                         <div className="flex flex-col gap-2 shrink-0">
-                          <button onClick={(e) => { e.stopPropagation(); openChat(goal); }} className="p-2 bg-emerald-100 text-emerald-600 rounded-full hover:bg-emerald-200 transition-colors"><MessageSquare size={18} /></button>
+                          {/* REMOVED: Chat Button */}
                           <button onClick={(e) => { e.stopPropagation(); deleteGoal(goal.id); }} className="p-2 hover:bg-red-50 text-emerald-200 hover:text-red-500 rounded-full transition-colors"><Trash2 size={18} /></button>
                         </div>
                       </div>
 
                       {isExpanded && (
                         <div className="px-2 pt-6 pb-2 border-t border-emerald-50 mt-4 animate-fadeIn">
-                          {/* ADDED: TODO Rendering */}
+                          {/* TODO List */}
                           {goal.subTasks && goal.subTasks.length > 0 && (
                             <div className="mb-4 space-y-2">
-                              <h4 className="text-xs font-bold text-emerald-800/50 uppercase">TODO</h4>
+                              <h4 className="text-xs font-bold text-emerald-800/50 uppercase">TODO List</h4>
                               {goal.subTasks.map((task, i) => {
                                 const isDone = (goal.doneSubTasks || []).includes(task);
                                 return (
@@ -350,8 +332,6 @@ const App = () => {
                               })}
                             </div>
                           )}
-
-                          {/* REMOVED: Truncation for roadmap */}
                           {goal.category === 'CHALLENGE' && (
                             <div className="space-y-4">
                               <h4 className="text-xs font-bold text-emerald-800/50 uppercase">ロードマップ</h4>
@@ -375,52 +355,61 @@ const App = () => {
             </div>
           </>
         )}
+
+        {currentView === 'daily' && (
+          <div className="space-y-6">
+            <div className="flex items-center gap-2 mb-6">
+              <ListTodo className="text-emerald-600" />
+              <h2 className="text-xl font-black text-emerald-900">今日のタスク</h2>
+            </div>
+
+            {dailyTasks.length === 0 ? (
+              <div className="text-center py-20 bg-white rounded-[2.5rem] border border-emerald-100">
+                <Sparkles className="mx-auto text-emerald-200 mb-4" size={48} />
+                <p className="text-slate-500 font-bold">今日のタスクはありません！</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {/* 1. Habits */}
+                {dailyTasks.filter(t => t.type === 'HABIT').length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-bold text-emerald-800/50 uppercase ml-2">習慣 (Habits)</h3>
+                    {dailyTasks.filter(t => t.type === 'HABIT').map((task, i) => (
+                      <div key={`habit-${task.goalId}`} onClick={() => toggleHabit(task.goalId)} className={`bg-white p-4 rounded-xl border-2 flex items-center gap-4 cursor-pointer transition-all ${task.isDone ? 'border-emerald-200 bg-emerald-50' : 'border-emerald-100 hover:border-emerald-300'}`}>
+                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${task.isDone ? 'bg-emerald-500 border-emerald-500' : 'border-slate-200'}`}>
+                          {task.isDone && <Check size={14} className="text-white" />}
+                        </div>
+                        <span className={`font-bold text-slate-700 ${task.isDone ? 'line-through opacity-50' : ''}`}>{task.text}</span>
+                        <span className="ml-auto text-[10px] font-black uppercase text-emerald-500 bg-emerald-100 px-2 py-1 rounded">HABIT</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 2. Subtasks */}
+                {dailyTasks.filter(t => t.type === 'SUBTASK').length > 0 && (
+                  <div className="space-y-3 mt-6">
+                    <h3 className="text-xs font-bold text-emerald-800/50 uppercase ml-2">アクション (Actions)</h3>
+                    {dailyTasks.filter(t => t.type === 'SUBTASK').map((task, i) => (
+                      <div key={`sub-${task.goalId}-${i}`} onClick={() => toggleSubTask(task.goalId, task.text)} className={`bg-white p-4 rounded-xl border-2 flex items-center gap-4 cursor-pointer transition-all ${task.isDone ? 'bg-stone-50 border-slate-100 opacity-60' : 'border-emerald-100 hover:border-emerald-300'}`}>
+                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${task.isDone ? 'bg-emerald-500 border-emerald-500' : 'border-slate-200'}`}>
+                          {task.isDone && <Check size={14} className="text-white" />}
+                        </div>
+                        <div className="flex-1">
+                          <div className="text-[10px] text-slate-400 font-bold mb-1">{task.parentText}</div>
+                          <div className={`font-bold text-slate-800 ${task.isDone ? 'line-through' : ''}`}>{task.text}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
-      {/* Chat Modal */}
-      {chatGoal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center pointer-events-none p-0 sm:p-4">
-          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm pointer-events-auto transition-opacity" onClick={() => setChatGoal(null)} />
-          <div className="bg-white w-full sm:max-w-lg h-[80vh] sm:h-[600px] sm:rounded-3xl shadow-2xl flex flex-col pointer-events-auto animate-slideUp overflow-hidden">
-            <div className="p-4 border-b flex justify-between items-center bg-emerald-50">
-              <div>
-                <span className="text-[10px] font-black uppercase text-emerald-500 tracking-wider">AI Coach</span>
-                <h3 className="font-bold text-emerald-900 truncate max-w-[200px]">{chatGoal.text}</h3>
-              </div>
-              <button onClick={() => setChatGoal(null)} className="p-2 hover:bg-emerald-100 rounded-full text-emerald-600 transition-colors"><X size={20} /></button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-stone-50">
-              {chatMessages.map((msg, idx) => (
-                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] p-4 rounded-2xl text-sm font-medium leading-relaxed ${msg.role === 'user' ? 'bg-emerald-600 text-white rounded-br-none' : 'bg-white border border-emerald-100 text-slate-700 rounded-bl-none shadow-sm'
-                    }`}>
-                    {msg.text}
-                  </div>
-                </div>
-              ))}
-              {isChatLoading && (
-                <div className="flex justify-start"><div className="bg-white p-4 rounded-2xl rounded-bl-none shadow-sm"><Loader2 className="animate-spin text-emerald-400" size={20} /></div></div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
-
-            <div className="p-4 bg-white border-t">
-              <form onSubmit={(e) => { e.preventDefault(); sendChatMessage(); }} className="flex gap-2">
-                <input
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="相談内容を入力..."
-                  className="flex-1 px-4 py-3 bg-stone-100 rounded-xl border-2 border-transparent focus:border-emerald-500 focus:bg-white outline-none transition-all font-medium"
-                />
-                <button disabled={!chatInput.trim() || isChatLoading} className="p-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors shadow-lg shadow-emerald-200">
-                  <Send size={20} />
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* REMOVED: Chat Modal */}
     </div>
   );
 };

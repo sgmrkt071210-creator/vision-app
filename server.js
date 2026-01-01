@@ -153,7 +153,7 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// Gemini API Proxy (Analysis) - Using 2.5-flash-preview
+// Gemini API Proxy (Analysis) - For goal categorization (Still kept as user didn't ask to remove)
 app.post('/api/analyze', async (req, res) => {
     try {
         const apiKey = process.env.GEMINI_API_KEY;
@@ -179,61 +179,7 @@ app.post('/api/analyze', async (req, res) => {
     }
 });
 
-// Gemini API Proxy (Chat) - Universal Fix
-app.post('/api/chat', async (req, res) => {
-    const { message, context, goal } = req.body;
-
-    try {
-        const apiKey = process.env.GEMINI_API_KEY;
-        const systemPrompt = `
-            あなたは目標達成コーチです。ユーザーの目標「${goal.text}」について相談を受けています。
-            現状の目標詳細: ${JSON.stringify(goal)}
-            
-            ユーザーの問いかけに対して、具体的かつ励ましのあるアドバイスをしてください。
-            必要であれば目標の修正案（下方修正や上方修正）も提案してください。
-            返答は短く簡潔なテキストで返してください。
-        `;
-
-        // Combine system prompt with the first user message for maximum compatibility
-        // This avoids 'systemInstruction' version issues
-        const updatedContext = [...(context || [])];
-        if (updatedContext.length === 0) {
-            // First message of the conversation
-            updatedContext.push({ role: "user", parts: [{ text: `【システム設定】\n${systemPrompt}\n\n【ユーザーの最初のメッセージ】\n${message}` }] });
-        } else {
-            // Subsequent messages
-            updatedContext.push({ role: "user", parts: [{ text: message }] });
-        }
-
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: updatedContext
-            })
-        });
-
-        const data = await response.json();
-
-        if (data.error) {
-            console.error('Gemini Chat API Error:', JSON.stringify(data.error));
-            throw new Error(data.error.message);
-        }
-
-        const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-        if (!reply) {
-            console.error('No content in Gemini response:', JSON.stringify(data));
-            throw new Error('No response from AI');
-        }
-
-        res.json({ candidates: [{ content: { parts: [{ text: reply }] } }] });
-
-    } catch (error) {
-        console.error('Chat API Error:', error);
-        res.status(500).json({ error: 'Chat failed' });
-    }
-});
+// REMOVED: /api/chat endpoint as per user request
 
 // Goals API (GET)
 app.get('/api/goals', async (req, res) => {
