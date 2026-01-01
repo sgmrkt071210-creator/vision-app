@@ -117,7 +117,7 @@ const App = () => {
             deadlineMonth: 数値
             isExam: true/false
             roadmap: [{"month":1,"task":"..."}...] (必ず1-12月)
-            subTasks: ["具体的な行動1","具体的な行動2","具体的な行動3", ...] (目標を達成するための具体的なTODOリスト)
+            subTasks: ["行動1","行動2","行動3", ...] (1つ30分~60分で完了する粒度のTODO)
             advice: "一言アドバイス"
             rewardIdea: "ご褒美アイデア"
           ` }]
@@ -299,7 +299,17 @@ const App = () => {
                         <div className="flex-grow">
                           <h3 className={`text-lg font-bold text-emerald-950 leading-snug ${goal.completed ? 'line-through text-slate-400' : ''}`}>{goal.text}</h3>
                           <div className="flex flex-wrap items-center gap-2 mt-2">
-                            <span className={`text-[10px] font-black px-3 py-1 rounded-full border uppercase tracking-widest ${cat.color}`}>{cat.label}</span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const cats = ['CHALLENGE', 'HABIT', 'HOBBY'];
+                                const nextIndex = (cats.indexOf(goal.category) + 1) % cats.length;
+                                changeCategory(goal.id, cats[nextIndex]);
+                              }}
+                              className={`text-[10px] font-black px-3 py-1 rounded-full border uppercase tracking-widest hover:brightness-95 transition-all ${cat.color}`}
+                            >
+                              {cat.label} <RefreshCcw size={8} className="inline ml-1 mb-0.5" />
+                            </button>
                             {goal.category === 'HABIT' && habitStats && (
                               <span className={`text-[10px] font-black px-2 py-1 rounded-full border flex items-center gap-1 ${isWarning ? 'bg-red-100 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
                                 <TrendingUp size={10} /> 達成率 {habitStats.rate}%
