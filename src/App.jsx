@@ -156,6 +156,7 @@ const App = () => {
 
   const toggleGoal = (id) => setGoals(goals.map(g => g.id === id ? { ...g, completed: !g.completed } : g));
   const deleteGoal = (id) => setGoals(goals.filter(g => g.id !== id));
+  const changeCategory = (goalId, newCategory) => setGoals(goals.map(g => g.id === goalId ? { ...g, category: newCategory } : g));
 
   const toggleSubTask = (goalId, text) => setGoals(goals.map(g => {
     if (g.id !== goalId) return g;
