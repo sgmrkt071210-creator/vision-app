@@ -202,7 +202,7 @@ const App = () => {
     goals.forEach(g => {
       if (g.subTasks && g.subTasks.length > 0) {
         const done = g.doneSubTasks || [];
-        g.subTasks.forEach(t => {
+        g.subTasks.slice(0, 3).forEach(t => {
           items.push({
             type: 'SUBTASK',
             goalId: g.id,
