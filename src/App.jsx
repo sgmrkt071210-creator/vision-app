@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, CheckCircle2, Circle, Trash2, Tag, Trophy, Repeat, Heart, Loader2, Search, ChevronDown, ChevronUp, CalendarDays, ListTodo, Lightbulb, MessageSquare, X, Gift, Sparkles, BookOpen, RefreshCcw, AlertCircle, TrendingUp, Flag } from 'lucide-react';
+import { Plus, CheckCircle2, Circle, Trash2, Tag, Trophy, Repeat, Heart, Loader2, ListTodo, Search, ChevronDown, CalendarDays, Sparkles, AlertCircle, TrendingUp, RefreshCcw, Check } from 'lucide-react';
 
 // カテゴリー定義
 const CATEGORIES = {
@@ -10,7 +10,6 @@ const CATEGORIES = {
   NONE: { id: 'NONE', label: '未分類', color: 'bg-gray-50 text-gray-400 border-gray-100', icon: Tag }
 };
 
-// APIキーはサーバー側で管理されるため削除
 const App = () => {
   const [goals, setGoals] = useState([]);
   const [inputValue, setInputValue] = useState('');
@@ -20,28 +19,60 @@ const App = () => {
   const [currentView, setCurrentView] = useState('goals');
   const [expandedGoalId, setExpandedGoalId] = useState(null);
 
+  // User Auth State
+  const [currentUser, setCurrentUser] = useState(localStorage.getItem('vision_app_username') || null);
+  const [loginInput, setLoginInput] = useState('');
+
   const today = new Date();
   const currentMonth = today.getMonth() + 1;
   const todayStr = useMemo(() => today.toISOString().split('T')[0], []);
 
-  // データの読み込み
+  // データの読み込み (ユーザーごと)
   useEffect(() => {
-    fetch('/api/goals')
-      .then(res => res.json())
-      .then(data => setGoals(data))
-      .catch(err => console.error('Failed to load goals:', err));
-  }, []);
+    if (!currentUser) return;
 
-  // データの保存
-  // データの保存
+    fetch(`/api/goals?username=${encodeURIComponent(currentUser)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setGoals(data);
+        }
+      })
+      .catch(err => console.error('Failed to load goals:', err));
+  }, [currentUser]);
+
+  // データの保存 (ユーザーごと)
   useEffect(() => {
-    if (goals.length === 0) return; // 初期ロード時の空データ保存防止
-    fetch('/api/goals', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(goals)
-    }).catch(err => console.error('Failed to save goals:', err));
-  }, [goals]);
+    if (!currentUser) return;
+    if (goals.length === 0) return;
+
+    const timer = setTimeout(() => {
+      fetch('/api/goals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: currentUser, goals })
+      }).catch(err => console.error('Failed to save goals:', err));
+    }, 1000); // 1秒デバウンス
+    return () => clearTimeout(timer);
+  }, [goals, currentUser]);
+
+  // --- Login Handlers ---
+  const handleLogin = (e) => {
+    e.preventDefault();
+    if (loginInput.trim()) {
+      const user = loginInput.trim();
+      localStorage.setItem('vision_app_username', user);
+      setCurrentUser(user);
+      setGoals([]); // Reset local state before load
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('vision_app_username');
+    setCurrentUser(null);
+    setGoals([]);
+    setLoginInput('');
+  };
 
   // 習慣の達成率計算
   const getHabitStats = (goal) => {
@@ -170,6 +201,43 @@ const App = () => {
     hobby: goals.filter(g => g.category === 'HOBBY').length,
   };
 
+  // --- Login UI ---
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-stone-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-[2.5rem] shadow-xl p-10 w-full max-w-md border border-emerald-100">
+          <div className="text-center mb-8">
+            <div className="bg-emerald-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-md">
+              <Sparkles className="w-10 h-10 text-emerald-600" />
+            </div>
+            <h1 className="text-3xl font-black text-emerald-900 tracking-tight">Vision App</h1>
+            <p className="text-slate-500 mt-2 font-medium">ユーザー名を入力して始めましょう</p>
+          </div>
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">ユーザー名</label>
+              <input
+                type="text"
+                value={loginInput}
+                onChange={(e) => setLoginInput(e.target.value)}
+                className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-50 outline-none transition-all text-lg font-bold text-slate-800"
+                placeholder="例: user123"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl transition-all shadow-lg hover:shadow-emerald-200 active:scale-[0.98]"
+            >
+              スタート
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Main App UI ---
   return (
     <div className="min-h-screen bg-stone-50 text-slate-900 pb-24 font-sans selection:bg-emerald-100">
       <header className="bg-white border-b sticky top-0 z-30 shadow-sm">
@@ -178,8 +246,12 @@ const App = () => {
             <h1 className="text-xl font-black flex items-center gap-2 text-emerald-900">
               <Sparkles className="text-emerald-600 fill-emerald-600" size={24} /> 2026 Vision 100
             </h1>
-            <div className="bg-emerald-700 px-3 py-1 rounded-full shadow-lg shadow-emerald-100">
-              <span className="text-xs font-black text-white">達成率 {Math.round((stats.completed / (stats.total || 1)) * 100)}%</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-bold text-slate-400 hidden sm:block">User: {currentUser}</span>
+              <button onClick={handleLogout} className="text-[10px] font-bold text-red-400 hover:text-red-500 hover:underline">ログアウト</button>
+              <div className="bg-emerald-700 px-3 py-1 rounded-full shadow-lg shadow-emerald-100">
+                <span className="text-xs font-black text-white">達成率 {Math.round((stats.completed / (stats.total || 1)) * 100)}%</span>
+              </div>
             </div>
           </div>
           <div className="flex p-1 bg-emerald-50/50 rounded-2xl border border-emerald-100">
