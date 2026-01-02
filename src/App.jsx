@@ -26,6 +26,40 @@ const App = () => {
   const [authInput, setAuthInput] = useState({ username: '', password: '' });
   const [authError, setAuthError] = useState('');
 
+  // Consult Modal (Regeneration)
+  const [consultModal, setConsultModal] = useState({ isOpen: false, goalId: null, goalText: '', request: '' });
+
+  // ... (previous code)
+
+  const handleOpenConsult = (goal) => {
+    setConsultModal({ isOpen: true, goalId: goal.id, goalText: goal.text, request: '' });
+  };
+
+  const handleRegeneratePlan = async () => {
+    if (!consultModal.request.trim()) return;
+    setIsAnalyzing(true);
+
+    const newPrompt = `目標「${consultModal.goalText}」に対して、以下の要望を踏まえてプラン（サブタスクとロードマップ）を作り直してください。
+      要望: ${consultModal.request}`;
+
+    const analysis = await analyzeGoal(newPrompt);
+
+    setGoals(goals.map(g => {
+      if (g.id === consultModal.goalId) {
+        return {
+          ...g,
+          subTasks: analysis.subTasks || [],
+          roadmap: analysis.roadmap || [],
+          advice: analysis.advice || g.advice
+        };
+      }
+      return g;
+    }));
+
+    setIsAnalyzing(false);
+    setConsultModal({ ...consultModal, isOpen: false });
+  };
+
   // REMOVED: Chat State
 
   const today = new Date();
@@ -402,6 +436,12 @@ const App = () => {
                                   </div>
                                 ))}
                               </div>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleOpenConsult(goal); }}
+                                className="w-full py-2 mt-2 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1 hover:bg-emerald-100 transition-colors"
+                              >
+                                <Sparkles size={14} /> AIと相談して作り直す
+                              </button>
                             </div>
                           )}
                           {goal.advice && <div className="mt-4 p-4 bg-emerald-50/50 rounded-2xl text-sm text-emerald-800 font-medium">💡 {goal.advice}</div>}
@@ -487,7 +527,37 @@ const App = () => {
         )}
       </main>
 
-      {/* REMOVED: Chat Modal */}
+      {/* Consult Modal */}
+      {consultModal.isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-fadeIn">
+          <div className="bg-white rounded-[2rem] p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="text-lg font-black text-emerald-900 mb-2">AIと相談して作り直す</h3>
+            <p className="text-sm text-slate-500 mb-4">目標: {consultModal.goalText}</p>
+            <textarea
+              value={consultModal.request}
+              onChange={(e) => setConsultModal({ ...consultModal, request: e.target.value })}
+              className="w-full h-32 p-4 bg-slate-50 border-2 border-slate-200 rounded-xl mb-4 focus:border-emerald-500 outline-none resize-none text-sm font-medium"
+              placeholder="要望を入力（例：もっとスモールステップにして、週末にまとめてやるプランにして、など）"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConsultModal({ ...consultModal, isOpen: false })}
+                className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleRegeneratePlan}
+                className="flex-1 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
+                disabled={isAnalyzing}
+              >
+                {isAnalyzing ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                作り直す
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
