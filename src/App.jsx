@@ -217,6 +217,7 @@ const App = () => {
 
     // 2. Uncompleted Subtasks
     goals.forEach(g => {
+      if (g.category === 'HOBBY') return; // Skip HOBBY actions
       if (g.subTasks && g.subTasks.length > 0) {
         const done = g.doneSubTasks || [];
         g.subTasks.slice(0, 3).forEach(t => {
