@@ -66,6 +66,18 @@ const App = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(authInput)
       });
+
+      if (res.status === 404) {
+        setAuthError('サーバー接続エラー (404)。ターミナルでサーバーを再起動してください。');
+        return;
+      }
+
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        setAuthError(`サーバーエラー (${res.status})。サーバーログを確認してください。`);
+        return;
+      }
+
       const data = await res.json();
 
       if (data.success) {
@@ -76,7 +88,8 @@ const App = () => {
         setAuthError(data.error || 'Authentication failed');
       }
     } catch (err) {
-      setAuthError('Network error occurred');
+      console.error(err);
+      setAuthError('ネットワークエラーが発生しました。サーバーが起動しているか確認してください。');
     }
   };
 
@@ -117,7 +130,10 @@ const App = () => {
             deadlineMonth: 数値
             isExam: true/false
             roadmap: [{"month":1,"task":"..."}...] (必ず1-12月)
-            subTasks: ["行動1","行動2","行動3", ...] (1つ30分~60分で完了する粒度のTODO)
+            subTasks: 文字列の配列 (以下のルールに従うこと)
+            - categoryが"CHALLENGE"の場合: 具体的な行動(30~60分粒度)を3つ
+            - categoryが"HABIT"の場合: その目標自体を1つだけ含める
+            - categoryが"HOBBY"の場合: 空配列[]にする
             advice: "一言アドバイス"
             rewardIdea: "ご褒美アイデア"
           ` }]
@@ -226,15 +242,26 @@ const App = () => {
         <div className="bg-white rounded-[2.5rem] shadow-xl p-10 w-full max-w-md border border-emerald-100">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-black text-emerald-900 tracking-tight">Vision App</h1>
-            <p className="text-slate-500 mt-2 font-medium">ログインしてスタート</p>
+            <p className="text-slate-500 mt-2 font-medium">
+              {authMode === 'LOGIN' ? 'ログインしてスタート' : '新規アカウント作成'}
+            </p>
           </div>
           <form onSubmit={handleAuth} className="space-y-4">
             <input type="text" value={authInput.username} onChange={e => setAuthInput({ ...authInput, username: e.target.value })} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl" placeholder="ユーザー名" required />
             <input type="password" value={authInput.password} onChange={e => setAuthInput({ ...authInput, password: e.target.value })} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl" placeholder="パスワード" required />
             {authError && <p className="text-red-500 text-sm">{authError}</p>}
-            <button type="submit" className="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl">Play</button>
+            <button type="submit" className="w-full bg-emerald-600 text-white font-bold py-4 rounded-xl hover:bg-emerald-700 transition-colors">
+              {authMode === 'LOGIN' ? 'ログイン' : '登録してはじめる'}
+            </button>
           </form>
-          <div className="mt-8 text-center"><button onClick={() => setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN')} className="text-emerald-600 underline">切り替え</button></div>
+          <div className="mt-8 text-center">
+            <button
+              onClick={() => { setAuthMode(authMode === 'LOGIN' ? 'REGISTER' : 'LOGIN'); setAuthError(''); }}
+              className="text-emerald-600 underline font-bold text-sm"
+            >
+              {authMode === 'LOGIN' ? 'はじめての方はこちら（新規登録）' : 'すでにアカウントをお持ちの方（ログイン）'}
+            </button>
+          </div>
         </div>
       </div>
     );
