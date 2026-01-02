@@ -230,6 +230,26 @@ const App = () => {
         });
       }
     });
+
+    // 3. HOBBY Reminders (Weekly)
+    goals.filter(g => g.category === 'HOBBY').forEach(g => {
+      if (!g.createdAt) return;
+      const created = new Date(g.createdAt);
+      const diffTime = Math.abs(today - created);
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+      // Show on creation day (0) and every 7 days (7, 14, 21...)
+      if (diffDays % 7 === 0) {
+        items.push({
+          type: 'HOBBY_REMINDER',
+          goalId: g.id,
+          parentText: g.text,
+          text: "そろそろこのタスクやりますか？",
+          isDone: false // Reminders aren't checkable tasks per se, but just suggestions
+        });
+      }
+    });
+
     return items;
   }, [goals, todayStr]);
 
@@ -436,6 +456,25 @@ const App = () => {
                         <div className="flex-1">
                           <div className="text-[10px] text-slate-400 font-bold mb-1">{task.parentText}</div>
                           <div className={`font-bold text-slate-800 ${task.isDone ? 'line-through' : ''}`}>{task.text}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 3. Hobby Reminders */}
+                {dailyTasks.filter(t => t.type === 'HOBBY_REMINDER').length > 0 && (
+                  <div className="space-y-3 mt-6">
+                    <h3 className="text-xs font-bold text-emerald-800/50 uppercase ml-2">提案 (Suggestions)</h3>
+                    {dailyTasks.filter(t => t.type === 'HOBBY_REMINDER').map((task, i) => (
+                      <div key={`hobby-${task.goalId}`} className="bg-gradient-to-r from-lime-50 to-white p-4 rounded-xl border-2 border-lime-100 flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-lime-100 flex items-center justify-center text-lime-600 shrink-0">
+                          <Sparkles size={20} />
+                        </div>
+                        <div className="flex-1">
+                          <div className="text-[10px] text-lime-600 font-bold mb-1 uppercase">趣味・リフレッシュ</div>
+                          <div className="font-bold text-slate-800">{task.parentText}</div>
+                          <div className="text-xs text-slate-500 mt-1">そろそろこのタスクやりますか？</div>
                         </div>
                       </div>
                     ))}
